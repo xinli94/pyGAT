@@ -5,7 +5,7 @@ import networkx as nx
 import numpy as np
 import os
 
-def denoise_graph(adj, node_idx, feat=None, label=None, threshold=0.1):
+def denoise_graph(adj, weights, node_idx, feat=None, label=None, threshold=0.1):
     num_nodes = adj.shape[-1]
     G = nx.Graph()
     G.add_nodes_from(range(num_nodes))
@@ -18,9 +18,9 @@ def denoise_graph(adj, node_idx, feat=None, label=None, threshold=0.1):
         for node in G.nodes():
             G.node[node]['label'] = label[node] 
     weighted_edge_list = [(i, j, adj[i, j]) for i in range(num_nodes) for j in range(num_nodes) if
-            adj[i,j] > threshold]
+            adj[i,j] > threshold and weights[i,j] > threshold]
     G.add_weighted_edges_from(weighted_edge_list)
-#     return G
+    # return G
     Gc = max(nx.connected_component_subgraphs(G), key=len) 
     return Gc
 
@@ -50,7 +50,7 @@ def extract_neighborhood(adj, features, labels, weights, node_idx, name, thresho
     name = os.path.splitext(name)[0] + '_neighbor_' + str(node_idx)
     adj, features, labels, weights, node_idx = sub_adj, sub_feat, sub_label, sub_weight, node_idx_new
 
-    D = denoise_graph(adj, node_idx, feat=features, label=labels, threshold=threshold)
+    D = denoise_graph(adj, weights, node_idx, feat=features, label=labels, threshold=threshold)
     return D, adj, features, labels, weights, node_idx, name
 
 def visualize(
@@ -108,7 +108,7 @@ def visualize(
             node_color=node_colors, vmin=0, vmax=vmax, cmap=cmap,
             edge_color=edge_colors, edge_cmap=plt.get_cmap('Greys'), 
             edge_vmin=0.0,
-            edge_vmax=1.0,#np.mean(edge_colors),
+            edge_vmax=np.mean(edge_colors),
             width=1.0, node_size=50,
             alpha=0.8)
     
@@ -130,6 +130,6 @@ if __name__ == '__main__':
         visualize(data_pkl='./data/gnn/data_syn2.pkl',
                   weights_pkl='./weights/weights_syn2.pkl',
                   node_idx=node_idx,
-                  threshold=0.9)
+                  threshold=0.125)
 
 
