@@ -7,6 +7,7 @@ import time
 import random
 import argparse
 import numpy as np
+import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,8 +16,6 @@ from torch.autograd import Variable
 
 from utils import load_data, load_data2, accuracy
 from models import GAT, SpGAT
-
-import pickle
 
 # Training settings
 parser = argparse.ArgumentParser()
@@ -32,7 +31,9 @@ parser.add_argument('--nb_heads', type=int, default=8, help='Number of head atte
 parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate (1 - keep probability).')
 parser.add_argument('--alpha', type=float, default=0.2, help='Alpha for the leaky_relu.')
 parser.add_argument('--patience', type=int, default=100, help='Patience')
-parser.add_argument('--pkl', type=str, default='', help='Load ckpt from gnn-model-explainer')
+parser.add_argument('--pkl', type=str, default='', help='Load custom data')
+parser.add_argument('--ckpt', type=str, default='', help='Load ckpt')
+parser.add_argument('--weights_only', action='store_true', default=False, help='Only compute attention weights')
 
 
 args = parser.parse_args()
@@ -50,7 +51,7 @@ if not args.pkl:
 # item = {
 #     'adj':adj, 'features':features, 'labels':labels, 'idx_train':idx_train, 'idx_val':idx_val, 'idx_test':idx_test
 # }
-# pickle.dump(item, open('t1.pkl', 'wb'), protocol=2)
+# pickle.dump(item, open('data/gnn/t1.pkl', 'wb'), protocol=2)
 
 else:
     item = pickle.load(open(args.pkl, "rb"))
@@ -58,16 +59,8 @@ else:
 # item = {
 #     'adj':adj, 'features':features, 'labels':labels, 'idx_train':idx_train, 'idx_val':idx_val, 'idx_test':idx_test
 # }
-# pickle.dump(item, open('t2.pkl', 'wb'), protocol=2)
+# pickle.dump(item, open('data/gnn/t2.pkl', 'wb'), protocol=2)
 # raise Exception('Early stop by xin')
-
-# adj = torch.FloatTensor(np.array(adj))
-# features = torch.FloatTensor(np.array(features))
-# labels = torch.LongTensor(np.where(labels)[1])
-
-# idx_train = torch.LongTensor(idx_train)
-# idx_val = torch.LongTensor(idx_val)
-# idx_test = torch.LongTensor(idx_test)
 
 # Model and optimizer
 if args.sparse:
@@ -137,47 +130,77 @@ def compute_test():
           "loss= {:.4f}".format(loss_test.data[0]),
           "accuracy= {:.4f}".format(acc_test.data[0]))
 
-# Train model
-t_total = time.time()
-loss_values = []
-bad_counter = 0
-best = args.epochs + 1
-best_epoch = 0
-for epoch in range(args.epochs):
-    loss_values.append(train(epoch))
-    current_lr = optimizer.state_dict()['param_groups'][0]['lr']
-    print('==> learning rate: {}'.format(current_lr))
+def main():
+    start_epoch = 0
+    if args.ckpt:
+        model.load_state_dict(torch.load(args.ckpt))
+        try:
+            start_epoch = int(os.path.splitext(os.path.basename(args.ckpt).split('_')[-1])[0])
+        except Exception as e:
+            print(e)
+            start_epoch = 0
 
-    torch.save(model.state_dict(), '{}.pkl'.format(epoch))
-    if loss_values[-1] < best:
-        best = loss_values[-1]
-        best_epoch = epoch
-        bad_counter = 0
-    else:
-        bad_counter += 1
+        if args.weights_only:
+            compute_test()
+            attention_out = model.out_att.attention_out
+            print('==> attention_out', attention_out)
+            dataset = os.path.splitext(os.path.basename(args.pkl).split('_')[-1])[0]
+            os.makedirs('weights', exist_ok=True)
+            save_path = 'weights/weights_' + dataset + '.pkl'
+            print('==> Save weights to {}'.format(save_path))
+            pickle.dump(attention_out, open(save_path, 'wb'), protocol=2)
+            return
 
-    if bad_counter == args.patience:
-        break
+
+    # Train model
+    t_total = time.time()
+    loss_values = []
+    bad_counter = 0
+    best = args.epochs + 1
+    best_epoch = 0
+    for epoch in range(start_epoch, args.epochs):
+        loss_values.append(train(epoch))
+        current_lr = optimizer.state_dict()['param_groups'][0]['lr']
+        print('==> learning rate: {}'.format(current_lr))
+
+        torch.save(model.state_dict(), '{}.pkl'.format(epoch))
+        if loss_values[-1] < best:
+            best = loss_values[-1]
+            best_epoch = epoch
+            bad_counter = 0
+        else:
+            bad_counter += 1
+
+        if bad_counter == args.patience:
+            break
+
+        files = glob.glob('*.pkl')
+        for file in files:
+            epoch_nb = int(file.split('.')[0])
+            if epoch_nb < best_epoch:
+                os.remove(file)
+        print('==>', model.attentions)
 
     files = glob.glob('*.pkl')
     for file in files:
-        epoch_nb = int(file.split('.')[0])
-        if epoch_nb < best_epoch:
+        try:
+            epoch_nb = int(file.split('.')[0])
+        except:
+            # some random pickle file
+            continue
+        if epoch_nb > best_epoch:
             os.remove(file)
-    print('==>', model.attentions)
 
-files = glob.glob('*.pkl')
-for file in files:
-    epoch_nb = int(file.split('.')[0])
-    if epoch_nb > best_epoch:
-        os.remove(file)
+    print("Optimization Finished!")
+    print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
 
-print("Optimization Finished!")
-print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
+    # Restore best model
+    print('Loading {}th epoch'.format(best_epoch))
+    model.load_state_dict(torch.load('{}.pkl'.format(best_epoch)))
 
-# Restore best model
-print('Loading {}th epoch'.format(best_epoch))
-model.load_state_dict(torch.load('{}.pkl'.format(best_epoch)))
+    # Testing
+    compute_test()
 
-# Testing
-compute_test()
+
+if __name__ == '__main__':
+    main()
