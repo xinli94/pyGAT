@@ -45,6 +45,24 @@ def load_data(path="./data/cora/", dataset="cora"):
 
     return adj, features, labels, idx_train, idx_val, idx_test
 
+def load_data2(item):
+    adj, features, labels, idx_train, idx_val, idx_test = np.array(item['adj']), np.array(item['features']), np.array(item['labels']), np.array(item['idx_train']), np.array(item['idx_val']), np.array(item['idx_test'])
+    # labels = encode_onehot(labels[:])
+
+    # adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+    # features = normalize_features(features)
+    # adj = normalize_adj(adj + sp.eye(adj.shape[0]))
+
+    adj = torch.FloatTensor(np.array(adj))
+    features = torch.FloatTensor(np.array(features))
+    # labels = torch.LongTensor(np.where(labels)[1])
+    labels = torch.LongTensor(labels)
+
+    idx_train = torch.LongTensor(idx_train)
+    idx_val = torch.LongTensor(idx_val)
+    idx_test = torch.LongTensor(idx_test)
+
+    return adj, features, labels, idx_train, idx_val, idx_test
 
 def normalize_adj(mx):
     """Row-normalize sparse matrix"""

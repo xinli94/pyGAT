@@ -13,8 +13,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 
-from utils import load_data, accuracy
+from utils import load_data, load_data2, accuracy
 from models import GAT, SpGAT
+
+import pickle
 
 # Training settings
 parser = argparse.ArgumentParser()
@@ -30,6 +32,8 @@ parser.add_argument('--nb_heads', type=int, default=8, help='Number of head atte
 parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate (1 - keep probability).')
 parser.add_argument('--alpha', type=float, default=0.2, help='Alpha for the leaky_relu.')
 parser.add_argument('--patience', type=int, default=100, help='Patience')
+parser.add_argument('--pkl', type=str, default='', help='Load ckpt from gnn-model-explainer')
+
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -41,7 +45,29 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
 # Load data
-adj, features, labels, idx_train, idx_val, idx_test = load_data()
+if not args.pkl:
+    adj, features, labels, idx_train, idx_val, idx_test = load_data()
+# item = {
+#     'adj':adj, 'features':features, 'labels':labels, 'idx_train':idx_train, 'idx_val':idx_val, 'idx_test':idx_test
+# }
+# pickle.dump(item, open('t1.pkl', 'wb'), protocol=2)
+
+else:
+    item = pickle.load(open(args.pkl, "rb"))
+    adj, features, labels, idx_train, idx_val, idx_test = load_data2(item)
+# item = {
+#     'adj':adj, 'features':features, 'labels':labels, 'idx_train':idx_train, 'idx_val':idx_val, 'idx_test':idx_test
+# }
+# pickle.dump(item, open('t2.pkl', 'wb'), protocol=2)
+# raise Exception('Early stop by xin')
+
+# adj = torch.FloatTensor(np.array(adj))
+# features = torch.FloatTensor(np.array(features))
+# labels = torch.LongTensor(np.where(labels)[1])
+
+# idx_train = torch.LongTensor(idx_train)
+# idx_val = torch.LongTensor(idx_val)
+# idx_test = torch.LongTensor(idx_test)
 
 # Model and optimizer
 if args.sparse:
@@ -119,6 +145,8 @@ best = args.epochs + 1
 best_epoch = 0
 for epoch in range(args.epochs):
     loss_values.append(train(epoch))
+    current_lr = optimizer.state_dict()['param_groups'][0]['lr']
+    print('==> learning rate: {}'.format(current_lr))
 
     torch.save(model.state_dict(), '{}.pkl'.format(epoch))
     if loss_values[-1] < best:
@@ -136,6 +164,7 @@ for epoch in range(args.epochs):
         epoch_nb = int(file.split('.')[0])
         if epoch_nb < best_epoch:
             os.remove(file)
+    print('==>', model.attentions)
 
 files = glob.glob('*.pkl')
 for file in files:
