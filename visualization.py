@@ -17,7 +17,7 @@ def denoise_graph(adj, weights, node_idx, feat=None, label=None, threshold=0.1):
     if label is not None:
         for node in G.nodes():
             G.node[node]['label'] = label[node] 
-    weighted_edge_list = [(i, j, adj[i, j]) for i in range(num_nodes) for j in range(num_nodes) if
+    weighted_edge_list = [(i, j, weights[i, j]) for i in range(num_nodes) for j in range(num_nodes) if
             adj[i,j] > threshold and weights[i,j] > threshold]
     G.add_weighted_edges_from(weighted_edge_list)
     # return G
@@ -108,7 +108,7 @@ def visualize(
             node_color=node_colors, vmin=0, vmax=vmax, cmap=cmap,
             edge_color=edge_colors, edge_cmap=plt.get_cmap('Greys'), 
             edge_vmin=0.0,
-            edge_vmax=np.mean(edge_colors),
+            edge_vmax=0.2,#np.mean(edge_colors),
             width=1.0, node_size=50,
             alpha=0.8)
     
